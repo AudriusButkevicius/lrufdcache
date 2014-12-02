@@ -104,8 +104,11 @@ func TestMixedEviction(t *testing.T) {
 	c := NewCache(1)
 
 	wg := sync.WaitGroup{}
+	wg2 := sync.WaitGroup{}
 	for i := 0; i < 100; i++ {
+		wg2.Add(1)
 		go func() {
+			defer wg2.Done()
 			fd, err := ioutil.TempFile("", "fdcache")
 			if err != nil {
 				t.Fatal(err)
@@ -136,6 +139,7 @@ func TestMixedEviction(t *testing.T) {
 		}()
 	}
 
+	wg2.Wait()
 	wg.Wait()
 }
 

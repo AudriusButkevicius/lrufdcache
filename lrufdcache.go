@@ -13,6 +13,9 @@ import (
 type CachedFile struct {
 	file *os.File
 	wg   sync.WaitGroup
+	// Locking between file.Close and file.ReadAt
+	// (just to please the race detector...)
+	flock sync.RWMutex
 }
 
 // Tells the cache that we are done using the file, but it's up to the cache
@@ -25,6 +28,8 @@ func (f *CachedFile) Close() error {
 
 // Read the file at the given offset.
 func (f *CachedFile) ReadAt(buf []byte, at int64) (int, error) {
+	f.flock.RLock()
+	defer f.flock.RUnlock()
 	return f.file.ReadAt(buf, at)
 }
 
@@ -45,7 +50,9 @@ func NewCache(entries int) *FileCache {
 		// file.
 		go func(item *CachedFile) {
 			item.wg.Wait()
+			item.flock.Lock()
 			item.file.Close()
+			item.flock.Unlock()
 		}(fdi.(*CachedFile))
 	}
 	return &c
