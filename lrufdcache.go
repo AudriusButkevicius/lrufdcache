@@ -35,7 +35,7 @@ func (f *CachedFile) ReadAt(buf []byte, at int64) (int, error) {
 
 type FileCache struct {
 	cache *lru.Cache
-	mut   sync.RWMutex // Protects against races between concurrent opens
+	mut   sync.Mutex
 }
 
 // Create a new cache with the number of entries to hold.
@@ -65,15 +65,14 @@ func (c *FileCache) Open(path string) (*CachedFile, error) {
 	// race between c.cache.Get and cfd.wg.Add where if not guarded by a mutex
 	// could result in cfd getting closed before the counter is incremented if
 	// a concurrent routine does a c.cache.Add
-	c.mut.RLock()
+	c.mut.Lock()
+	defer c.mut.Unlock()
 	fdi, ok := c.cache.Get(path)
 	if ok {
 		cfd := fdi.(*CachedFile)
 		cfd.wg.Add(1)
-		c.mut.RUnlock()
 		return cfd, nil
 	}
-	c.mut.RUnlock()
 
 	fd, err := os.Open(path)
 	if err != nil {
@@ -84,8 +83,6 @@ func (c *FileCache) Open(path string) (*CachedFile, error) {
 		wg:   sync.WaitGroup{},
 	}
 	cfd.wg.Add(1)
-	c.mut.Lock()
 	c.cache.Add(path, cfd)
-	c.mut.Unlock()
 	return cfd, nil
 }
